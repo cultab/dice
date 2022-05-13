@@ -1,0 +1,206 @@
+#!/usr/bin/python3
+
+from enum import Enum, auto
+from sys import argv
+import random
+
+
+class Type(Enum):
+    DICE = auto()
+    ADVANTAGE = auto()
+    REPEAT = auto()
+    ROLL_END = auto()
+    END = auto()
+
+
+class Character:
+
+    def __init__(self, name, level):
+        self.name = name
+        self.level = level
+
+
+class DiceRoll:
+
+    def __init__(self, dice, repeat, advantage=0):
+        self.dice = dice
+        self.repeat = repeat
+        self.advantage = advantage
+
+    def __repr__(self):
+        return f"{self.repeat}d{self.dice}" + (" with advantage" if self.advantage == 1 else "") + (" with disadvantage" if self.advantage == -1 else "")
+
+
+def parse_error_msg(msg: str) -> None:
+    print(f"PARSE ERROR: {msg}")
+    exit(-1)
+
+
+def roll_damage(roll: DiceRoll) -> int:
+    """Roll all the dice defined in roll."""
+
+    print(f"Rolling {roll}")
+
+    damage = 0
+    for i in range(roll.repeat):
+        first = random.randint(1, roll.dice)
+        second = random.randint(1, roll.dice)
+
+        if roll.advantage == 0:
+            print(f"\tRolled a {first}")
+        else:
+            print(f"\tRolled a {first} and a {second}")
+
+        if roll.advantage == 1:
+            roll_damage = max(first, second)
+            print(f"\tkeeping the {first if first > second else second}")
+        elif roll.advantage == -1:
+            roll_damage = min(first, second)
+            print(f"\tkeeping the {first if first < second else second}")
+        else:
+            roll_damage = first
+
+        damage += roll_damage
+
+    return damage
+
+
+def parse(input: list[str]) -> list[DiceRoll]:
+    # initialize
+    loc = 0
+    type = Type.REPEAT
+    # forward declare
+    dice = 0
+    repeat = 0
+    advantage = 0
+    rolls = list()
+    while True:
+        match type:
+            case Type.REPEAT:
+                repeat, type, loc = parse_repeat(input, loc)
+            case Type.DICE:
+                dice, type, loc = parse_dice(input, loc)
+            case Type.ADVANTAGE:
+                advantage, type, loc = parse_advantage(input, loc)
+            case Type.ROLL_END:
+                # create dice roll
+                dice_roll = DiceRoll(dice, repeat, advantage)
+                rolls.append(dice_roll)
+
+                # reset advantage
+                advantage = 0
+                # go around again
+                type = Type.REPEAT
+            case Type.END:
+                # create final dice roll
+                dice_roll = DiceRoll(dice, repeat, advantage)
+                rolls.append(dice_roll)
+
+                break
+    return rolls
+
+
+def parse_repeat(input: list[str], loc) -> (int, Type, int):
+    lexeme = list()
+    c = input[loc]
+    while True:
+        if c.isnumeric():  # get number of rolls
+            lexeme.append(c)
+            loc += 1
+            c = input[loc]
+        elif c.isalpha():  # we got to 'd' of '2d10'
+            return int("".join(lexeme)), Type.DICE, loc
+        else:
+            parse_error_msg(f"unexpected character '{c}'")
+            exit(-1)
+
+
+def parse_dice(input: list[str], loc) -> (int, Type, int):
+    lexeme = list()
+    # skip over 'd' in '2d8'
+    loc += 1
+    while loc < len(input):
+        c = input[loc]
+        loc += 1
+        if c.isnumeric():  # get dice type
+            lexeme.append(c)
+        elif c.isspace():  # ignore spaces
+            pass
+        elif c.isalpha():  # end dice, goto advantage parsing
+            loc -= 1
+            return int("".join(lexeme)), Type.ADVANTAGE, loc
+        elif c == "+":    # end dice roll, go around again
+            loc -= 1
+            return int("".join(lexeme)), Type.ROLL_END, loc
+        else:
+            parse_error_msg(f"unexpected character '{c}'")
+            exit(-1)
+
+    return int("".join(lexeme)), Type.END, loc
+
+
+def parse_advantage(input: list[str], loc) -> (int, Type, int):
+    lexeme = list()
+    c = input[loc]
+    while True:
+        if c.isalpha():  # get characters
+            lexeme.append(c)
+            loc += 1
+            c = input[loc]
+        elif c.isspace():  # ignore spaces
+            loc += 1
+        elif c == "+":  # found start of another roll, end advantage
+            loc += 1
+            ret = 0
+            match "".join(lexeme):
+                case "advantage":
+                    ret = 1
+                case "disadvantage":
+                    ret = -1
+                case _:
+                    parse_error_msg(f"unexpected lexeme '{''.join(lexeme)}'")
+                    exit(-1)
+
+            return ret, Type.ROLL_END, loc
+        else:
+            parse_error_msg(f"unexpected character '{c}'")
+            exit(-1)
+
+
+if __name__ == "__main__":
+    rolls = parse("".join(argv[1:]))
+    print(rolls)
+
+    total_damage = 0
+    for roll in rolls:
+        total_damage += roll_damage(roll)
+
+    print(f"Total damage: {total_damage}")
+
+
+# def parse_old(input: list[str]) -> list[DiceRoll]:
+#     """Parse input and return list of dice rolls"""
+#     parts = "".join(input).split("+")
+#
+#     rolls = list()
+#
+#     advantage = 0
+#     for part in parts:
+#         if "disadvantage" in part:
+#             advantage = -1
+#         elif "advantage" in part:
+#             advantage = 1
+#         else:
+#             advantage = 0
+#
+#         raw = part.split("d")
+#         repeat = int(raw[0])
+#         dice_type = int("".join(
+#             list(
+#                 filter(lambda l: not l.isalpha(), list(raw[1]))
+#             )
+#         ))
+#
+#         rolls.append(DiceRoll(dice_type, repeat, advantage))
+#
+#     return rolls
